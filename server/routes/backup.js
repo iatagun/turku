@@ -15,11 +15,11 @@ function adminOnly(req, res, next) {
 
 // POST /api/backup - Manuel yedekleme oluştur
 router.post('/', auth, adminOnly, asyncHandler(async (req, res) => {
-  const success = backupService.saveBackup();
+  const success = await backupService.saveBackup();
   if (success) {
-    res.json({ message: 'Yedekleme başarıyla oluşturuldu.' });
+    res.json({ message: 'Yedekleme GitHub\'a başarıyla yüklendi.' });
   } else {
-    res.status(500).json({ error: 'Yedekleme oluşturulamadı.' });
+    res.status(500).json({ error: 'Yedekleme oluşturulamadı. GitHub ayarlarını kontrol edin.' });
   }
 }));
 

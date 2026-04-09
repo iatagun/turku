@@ -1,12 +1,23 @@
 const db = require('../db');
-const fs = require('fs');
-const path = require('path');
+const axios = require('axios');
 
-const BACKUP_DIR = process.env.DB_PATH
-  ? path.dirname(process.env.DB_PATH)
-  : path.join(__dirname, '..');
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const GITHUB_REPO = process.env.GITHUB_REPO || 'turku';
+const GITHUB_OWNER = process.env.GITHUB_OWNER;
+const BACKUP_PATH = 'backups/turku-backup.json';
+const GITHUB_API = 'https://api.github.com';
 
-const BACKUP_FILE = path.join(BACKUP_DIR, 'turku-backup.json');
+function githubReady() {
+  return !!(GITHUB_TOKEN && GITHUB_OWNER);
+}
+
+function githubHeaders() {
+  return {
+    Authorization: `Bearer ${GITHUB_TOKEN}`,
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+}
 
 const backupService = {
   // Tüm kullanıcı verilerini (users + analyses) JSON olarak dışa aktar
@@ -16,38 +27,78 @@ const backupService = {
     return { version: 1, exported_at: new Date().toISOString(), users, analyses };
   },
 
-  // Yedekleme dosyasına kaydet
-  saveBackup() {
+  // GitHub'a yedekleme yükle
+  async saveBackup() {
+    if (!githubReady()) {
+      console.log('⚠️  GitHub yedekleme yapılandırılmamış (GITHUB_TOKEN / GITHUB_OWNER eksik)');
+      return false;
+    }
+
     try {
       const data = this.exportData();
-      fs.writeFileSync(BACKUP_FILE, JSON.stringify(data, null, 2), 'utf-8');
-      console.log(`💾 Yedekleme kaydedildi: ${BACKUP_FILE} (${data.users.length} kullanıcı, ${data.analyses.length} analiz)`);
+      if (data.analyses.length === 0 && data.users.length <= 1) {
+        console.log('ℹ️  Yedeklenecek veri yok, atlanıyor.');
+        return false;
+      }
+
+      const content = Buffer.from(JSON.stringify(data, null, 2)).toString('base64');
+      const url = `${GITHUB_API}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${BACKUP_PATH}`;
+
+      // Mevcut dosyanın SHA'sını al (güncelleme için gerekli)
+      let sha = null;
+      try {
+        const existing = await axios.get(url, { headers: githubHeaders() });
+        sha = existing.data.sha;
+      } catch (e) {
+        if (e.response?.status !== 404) throw e;
+      }
+
+      const payload = {
+        message: `🔄 Otomatik yedekleme: ${data.users.length} kullanıcı, ${data.analyses.length} analiz`,
+        content,
+        ...(sha && { sha }),
+      };
+
+      await axios.put(url, payload, { headers: githubHeaders() });
+      console.log(`💾 GitHub'a yedeklendi (${data.users.length} kullanıcı, ${data.analyses.length} analiz)`);
       return true;
     } catch (err) {
-      console.error('❌ Yedekleme hatası:', err.message);
+      console.error('❌ GitHub yedekleme hatası:', err.response?.data?.message || err.message);
       return false;
     }
   },
 
-  // Yedekten geri yükle (sadece DB boşsa)
-  restoreIfEmpty() {
+  // GitHub'dan yedek indir
+  async fetchBackup() {
+    if (!githubReady()) return null;
+
+    try {
+      const url = `${GITHUB_API}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${BACKUP_PATH}`;
+      const res = await axios.get(url, { headers: githubHeaders() });
+      const raw = Buffer.from(res.data.content, 'base64').toString('utf-8');
+      return JSON.parse(raw);
+    } catch (err) {
+      if (err.response?.status === 404) {
+        console.log('ℹ️  GitHub\'da yedek dosyası bulunamadı.');
+      } else {
+        console.error('❌ GitHub yedek indirme hatası:', err.response?.data?.message || err.message);
+      }
+      return null;
+    }
+  },
+
+  // GitHub'dan yedekten geri yükle (sadece DB boşsa)
+  async restoreIfEmpty() {
     const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
     const analysisCount = db.prepare('SELECT COUNT(*) as c FROM analyses').get().c;
 
-    // Zaten veri varsa geri yükleme yapma
     if (analysisCount > 0 || userCount > 1) return false;
 
-    if (!fs.existsSync(BACKUP_FILE)) {
-      console.log('ℹ️  Yedekleme dosyası bulunamadı, yeni kurulum.');
-      return false;
-    }
+    const data = await this.fetchBackup();
+    if (!data) return false;
 
     try {
-      const raw = fs.readFileSync(BACKUP_FILE, 'utf-8');
-      const data = JSON.parse(raw);
-
       const txn = db.transaction(() => {
-        // Kullanıcıları geri yükle (admin hariç, zaten var)
         const insertUser = db.prepare(`
           INSERT OR IGNORE INTO users (id, name, email, password, role, created_at)
           VALUES (?, ?, ?, ?, ?, ?)
@@ -56,7 +107,6 @@ const backupService = {
           insertUser.run(u.id, u.name, u.email, u.password, u.role, u.created_at);
         }
 
-        // Analizleri geri yükle
         const insertAnalysis = db.prepare(`
           INSERT OR IGNORE INTO analyses (id, user_id, turku_id, turku_name, status,
             konu, kullanilabilirlik, somutluk, tema, toplumsal_islev,
@@ -75,7 +125,7 @@ const backupService = {
       });
 
       txn();
-      console.log(`✅ Yedekten geri yüklendi: ${data.users.length} kullanıcı, ${data.analyses.length} analiz`);
+      console.log(`✅ GitHub'dan geri yüklendi: ${data.users.length} kullanıcı, ${data.analyses.length} analiz`);
       return true;
     } catch (err) {
       console.error('❌ Geri yükleme hatası:', err.message);

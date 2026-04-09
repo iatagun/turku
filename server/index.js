@@ -39,9 +39,11 @@ app.listen(PORT, () => {
   console.log(`🎵 Türkü Analiz Platformu sunucusu ${PORT} portunda çalışıyor`);
   console.log(`   http://localhost:${PORT}`);
 
-  // Yedekten geri yükleme (DB boşsa)
+  // Yedekten geri yükleme (DB boşsa GitHub'dan çek)
   const backupService = require('./services/backupService');
-  backupService.restoreIfEmpty();
+  backupService.restoreIfEmpty().then(restored => {
+    if (restored) console.log('📦 GitHub yedeğinden geri yükleme tamamlandı.');
+  });
 
   // DB boşsa otomatik türkü listesini çek (Render deploy sonrası vb.)
   const turkuRepo = require('./repositories/turkuRepository');
@@ -66,11 +68,11 @@ app.listen(PORT, () => {
 });
 
 // Kapanışta son yedekleme
-function gracefulShutdown(signal) {
+async function gracefulShutdown(signal) {
   console.log(`\n🛑 ${signal} sinyali alındı, son yedekleme yapılıyor...`);
   try {
     const backupService = require('./services/backupService');
-    backupService.saveBackup();
+    await backupService.saveBackup();
   } catch (err) {
     console.error('❌ Kapanış yedeği hatası:', err.message);
   }
