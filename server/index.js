@@ -37,4 +37,22 @@ app.get('*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🎵 Türkü Analiz Platformu sunucusu ${PORT} portunda çalışıyor`);
   console.log(`   http://localhost:${PORT}`);
+
+  // DB boşsa otomatik türkü listesini çek (Render deploy sonrası vb.)
+  const turkuRepo = require('./repositories/turkuRepository');
+  const totalTurkus = turkuRepo.count();
+  if (totalTurkus === 0) {
+    console.log('📥 DB boş, repertükül.com\'dan türkü listesi çekiliyor...');
+    const { fetchAllTurkus } = require('./services/repertukul');
+    fetchAllTurkus().then(items => {
+      const inserted = turkuRepo.insertBatch(items);
+      console.log(`✅ ${inserted} türkü yüklendi.`);
+
+      // Slug'ları güncelle
+      turkuRepo.updateBatchSlugs(items);
+      console.log('✅ Slug\'lar güncellendi.');
+    }).catch(err => {
+      console.error('❌ Otomatik türkü çekme hatası:', err.message);
+    });
+  }
 });
