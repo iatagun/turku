@@ -65,12 +65,6 @@ export default function Login() {
             <>Hesabınız yok mu? <a onClick={() => setIsRegister(true)}>Kayıt Ol</a></>
           )}
         </p>
-
-        <div style={{ marginTop: 20, padding: 12, background: '#F5F0EB', borderRadius: 8, fontSize: '0.8rem', color: '#6B6B6B' }}>
-          <strong>Demo Giriş:</strong><br />
-          E-posta: admin@turku.edu.tr<br />
-          Şifre: admin123
-        </div>
       </div>
     </div>
   );
