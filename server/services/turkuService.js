@@ -1,6 +1,9 @@
 const turkuRepo = require('../repositories/turkuRepository');
-const { searchTurku, getTurkuDetail, fetchAllTurkus } = require('./repertukul');
+const { searchTurku, getTurkuDetail, fetchAllTurkus, fetchAllLyrics } = require('./repertukul');
 const { ValidationError, NotFoundError, ForbiddenError } = require('../middleware/errorHandler');
+
+// Aktif söz çekme işlemi takibi
+let lyricsJobStatus = null;
 
 const turkuService = {
   async search(q, category) {
@@ -47,11 +50,15 @@ const turkuService = {
 
     const totalBefore = turkuRepo.count();
     const items = await fetchAllTurkus();
+
+    // Önce mevcut türkülerin slug'larını güncelle
+    turkuRepo.updateBatchSlugs(items);
+    // Sonra yeni türküleri ekle (slug ile birlikte)
     const inserted = turkuRepo.insertBatch(items);
     const totalNow = turkuRepo.count();
 
     return {
-      message: `${inserted} yeni türkü eklendi.`,
+      message: `${inserted} yeni türkü eklendi, slug'lar güncellendi.`,
       fetched: items.length,
       inserted,
       totalBefore,
@@ -59,15 +66,68 @@ const turkuService = {
     };
   },
 
+  async fetchLyrics(userRole) {
+    if (userRole !== 'admin') {
+      throw new ForbiddenError('Bu işlem için admin yetkisi gerekiyor.');
+    }
+
+    if (lyricsJobStatus && lyricsJobStatus.running) {
+      return {
+        message: 'Söz çekme işlemi devam ediyor.',
+        ...lyricsJobStatus,
+      };
+    }
+
+    const remaining = turkuRepo.countWithoutLyrics();
+    if (remaining === 0) {
+      return {
+        message: 'Tüm türkülerin sözleri zaten çekilmiş.',
+        withLyrics: turkuRepo.countWithLyrics(),
+        remaining: 0,
+      };
+    }
+
+    // Arka planda başlat — blocking değil
+    lyricsJobStatus = { running: true, fetched: 0, failed: 0, total: remaining };
+
+    fetchAllLyrics(turkuRepo, (progress) => {
+      lyricsJobStatus = { ...lyricsJobStatus, ...progress };
+    }).then((result) => {
+      lyricsJobStatus = { running: false, ...result };
+      console.log(`Söz çekme tamamlandı: ${result.fetched} başarılı, ${result.failed} başarısız`);
+    }).catch((err) => {
+      lyricsJobStatus = { running: false, error: err.message };
+      console.error('Söz çekme hatası:', err.message);
+    });
+
+    return {
+      message: `${remaining} türkü için söz çekme başlatıldı. İlerleme: /api/turku/lyrics-status`,
+      total: remaining,
+    };
+  },
+
+  getLyricsStatus() {
+    return {
+      withLyrics: turkuRepo.countWithLyrics(),
+      withoutLyrics: turkuRepo.countWithoutLyrics(),
+      job: lyricsJobStatus,
+    };
+  },
+
   async getById(id) {
     let turku = turkuRepo.findByIdOrRepertukul(id);
-    if (turku) return turku;
+    if (!turku) throw new NotFoundError('Türkü bulunamadı.');
 
-    const detail = await getTurkuDetail(id);
-    if (!detail) throw new NotFoundError('Türkü bulunamadı.');
+    // Eğer sözler henüz çekilmediyse ve slug varsa, şimdi çek
+    if ((!turku.lyrics || turku.lyrics === '') && turku.slug) {
+      const detail = await getTurkuDetail(turku.slug);
+      if (detail && detail.lyrics) {
+        turkuRepo.updateLyricsAndMeta(turku.id, detail);
+        turku = turkuRepo.findById(turku.id);
+      }
+    }
 
-    turkuRepo.insertFromRepertukul(detail);
-    return turkuRepo.findByRepertukulId(id) || detail;
+    return turku;
   },
 
   update(id, data) {

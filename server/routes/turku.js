@@ -18,6 +18,14 @@ router.post('/fetch-all', auth, asyncHandler(async (req, res) => {
   res.json(await turkuService.fetchAll(req.user.role));
 }));
 
+router.post('/fetch-lyrics', auth, asyncHandler(async (req, res) => {
+  res.json(await turkuService.fetchLyrics(req.user.role));
+}));
+
+router.get('/lyrics-status', auth, asyncHandler(async (req, res) => {
+  res.json(turkuService.getLyricsStatus());
+}));
+
 router.get('/:id', auth, asyncHandler(async (req, res) => {
   res.json(await turkuService.getById(req.params.id));
 }));

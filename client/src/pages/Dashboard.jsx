@@ -41,6 +41,13 @@ export default function Dashboard() {
             <StatCard value={platformStats.turkus.analyzed} label="Analiz Edilen" color="#28A745" />
             <StatCard value={platformStats.turkus.pending} label="Analiz Bekleyen" color="#D4A017" />
             <StatCard value={`${platformStats.completionRate}%`} label="Tamamlanma Oranı" color="#17A2B8" />
+            {platformStats.lyrics && (
+              <StatCard
+                value={`${platformStats.lyrics.withLyrics}/${platformStats.turkus.total}`}
+                label="📜 Söz Çekildi"
+                color="#8B5CF6"
+              />
+            )}
           </div>
           <ProgressBar
             current={platformStats.turkus.analyzed}

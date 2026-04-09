@@ -51,91 +51,122 @@ async function searchTurku(query, category = '1') {
   }
 }
 
-// Türkü detay bilgilerini çek
-async function getTurkuDetail(turkuId) {
+// Slug sayfasından türkü detay + sözlerini çek
+async function getTurkuDetail(slug) {
   try {
-    const response = await axios.post(
-      `${BASE_URL}/hkssSFCSDfnjdffvXXefcbfddfcvdvFFDV5lkjffgtyuftr55SEY.jpg/`,
-      `kod=${turkuId}`,
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'X-Requested-With': 'XMLHttpRequest',
-          'Referer': BASE_URL,
-        },
-        responseType: 'arraybuffer',
-        timeout: 15000,
-      }
-    );
+    const response = await axios.get(`${BASE_URL}/${slug}`, {
+      responseType: 'arraybuffer',
+      timeout: 15000,
+    });
 
     const html = iconv.decode(Buffer.from(response.data), 'utf-8');
     const $ = cheerio.load(html);
 
     const detail = {
-      repertukul_id: turkuId,
+      slug,
       name: '',
       trt_no: '',
       region: '',
       city: '',
+      district_village: '',
       source_person: '',
       compiler: '',
       notator: '',
+      performer: '',
       musical_type: '',
       modal_scale: '',
+      subject_type: '',
       lyrics: '',
-      raw_html: html,
     };
 
-    // Parse field-value pairs from the detail HTML
-    const textContent = $.text();
-    const lines = textContent.split('\n').map(l => l.trim()).filter(Boolean);
+    // #tcerceve1: meta veri tablosu
+    const nameEl = $('#tcerceve1 font.normalbuyukbaslik');
+    if (nameEl.length) detail.name = nameEl.text().trim();
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const next = lines[i + 1] || '';
+    // Tablo satırlarından meta verileri çek
+    $('#tcerceve1 tr').each((_, tr) => {
+      const cells = $(tr).find('td');
+      if (cells.length < 3) return;
+      const label = $(cells[1]).text().trim().toLowerCase();
+      const value = $(cells[2]).text().replace(/\u00a0/g, ' ').trim();
+      if (!value) return;
 
-      if (/Eser\s*Ad/i.test(line) || /Türkü\s*Ad/i.test(line)) detail.name = next;
-      if (/TRT.*No/i.test(line) || /Repertuvar.*No/i.test(line)) detail.trt_no = next;
-      if (/Yöre/i.test(line) || /Bölge/i.test(line)) detail.region = next;
-      if (/Kaynak.*Kişi/i.test(line)) detail.source_person = next;
-      if (/Derleyen/i.test(line)) detail.compiler = next;
-      if (/Notaya.*Alan/i.test(line)) detail.notator = next;
-      if (/Makam/i.test(line) || /Dizi/i.test(line)) detail.modal_scale = next;
-    }
+      if (label.includes('repertuar no')) detail.trt_no = value;
+      else if (label.includes('yöresi') || label.includes('ili')) detail.region = value;
+      else if (label.includes('ilçesi') || label.includes('köyü')) detail.district_village = value;
+      else if (label.includes('kaynak')) detail.source_person = value;
+      else if (label.includes('derleyen')) detail.compiler = value;
+      else if (label.includes('notaya')) detail.notator = value;
+      else if (label.includes('icra') || label.includes('İcra')) detail.performer = value;
+      else if (label.includes('makam')) detail.modal_scale = value;
+      else if (label.includes('konusu') || label.includes('türü')) detail.subject_type = value;
+    });
 
-    // Try to extract name from title or header
-    if (!detail.name) {
-      const titleEl = $('b, strong, h1, h2, h3, .baslik, .turkuAd').first();
-      if (titleEl.length) detail.name = titleEl.text().trim();
-    }
+    // Kategori (Kırık Havalar, Uzun Havalar vb.)
+    const categoryEl = $('font.normalbuyuk2');
+    if (categoryEl.length) detail.musical_type = categoryEl.first().text().trim();
 
-    // Extract lyrics
-    const lyricsSelectors = ['.turkuSoz', '.sozler', '#sozler', '.lyrics'];
-    for (const sel of lyricsSelectors) {
-      const el = $(sel);
-      if (el.length) {
-        detail.lyrics = el.text().trim();
-        break;
+    // #tcerceve2: sözler — "TÜRKÜNÜN SÖZLERİ" başlığının altında
+    const tcerceve2 = $('#tcerceve2');
+    if (tcerceve2.length) {
+      // font.normalkucuk inside tcerceve2 after "TÜRKÜNÜN SÖZLERİ"
+      const lyricsFont = tcerceve2.find('font.normalbuyukbaslik font.normalkucuk');
+      if (lyricsFont.length) {
+        // <br> etiketlerini newline'a çevir
+        let lyricsHtml = lyricsFont.html();
+        detail.lyrics = lyricsHtml
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&#39;/g, "'")
+          .replace(/&quot;/g, '"')
+          .trim();
       }
-    }
-
-    // If no lyrics found, try to find text blocks that look like lyrics
-    if (!detail.lyrics) {
-      $('div, p, td').each((_, el) => {
-        const text = $(el).text().trim();
-        if (text.length > 50 && text.includes('\n') && !text.includes('http')) {
-          if (!detail.lyrics || text.length > detail.lyrics.length) {
-            detail.lyrics = text;
-          }
-        }
-      });
     }
 
     return detail;
   } catch (error) {
-    console.error('Repertukul detay hatası:', error.message);
+    console.error('Repertukul detay hatası:', error.message, slug);
     return null;
   }
+}
+
+// Belirli bir süre bekle (rate limiting)
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Toplu söz çekme — slug'ları olan ama sözü olmayan türküler için
+async function fetchAllLyrics(turkuRepo, onProgress) {
+  const turkus = turkuRepo.findWithoutLyrics(5000);
+  const total = turkus.length;
+  let fetched = 0;
+  let failed = 0;
+
+  for (const turku of turkus) {
+    try {
+      const detail = await getTurkuDetail(turku.slug);
+      if (detail && detail.lyrics) {
+        turkuRepo.updateLyricsAndMeta(turku.id, detail);
+        fetched++;
+      } else {
+        // Söz yok ama sayfaya erişildi — boş lyrics işaretle
+        turkuRepo.markNoLyrics(turku.id);
+        failed++;
+      }
+    } catch (err) {
+      failed++;
+    }
+
+    if (onProgress) onProgress({ fetched, failed, total, current: fetched + failed });
+    // Sunucuya yük bindirmemek için 500ms bekle
+    await sleep(500);
+  }
+
+  return { fetched, failed, total };
 }
 
 // Kırık havalar, uzun havalar, oyun havaları listesini çek
@@ -185,4 +216,4 @@ async function fetchAllTurkus(onProgress) {
   return [...allItems.values()];
 }
 
-module.exports = { searchTurku, getTurkuDetail, getCategory, fetchAllTurkus, parseTurkuList };
+module.exports = { searchTurku, getTurkuDetail, getCategory, fetchAllTurkus, fetchAllLyrics, parseTurkuList };

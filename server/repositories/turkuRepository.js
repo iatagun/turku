@@ -7,7 +7,8 @@ const turkuRepository = {
 
   findPaginated({ conditions = '', params = [], limit = 50, offset = 0 }) {
     return db.prepare(`
-      SELECT t.id, t.repertukul_id, t.name, t.trt_no, t.region, t.city, t.musical_type,
+      SELECT t.id, t.repertukul_id, t.name, t.trt_no, t.region, t.city, t.musical_type, t.slug,
+        CASE WHEN t.lyrics IS NOT NULL AND t.lyrics != '' AND t.lyrics != '[SOZ_YOK]' THEN 1 ELSE 0 END as has_lyrics,
         (SELECT COUNT(*) FROM analyses a WHERE a.turku_id = t.id AND a.status = 'completed') as completed_count,
         (SELECT COUNT(*) FROM analyses a WHERE a.turku_id = t.id AND a.status = 'draft') as draft_count,
         (SELECT GROUP_CONCAT(u.name, ', ') FROM analyses a JOIN users u ON a.user_id = u.id
@@ -43,15 +44,67 @@ const turkuRepository = {
   },
 
   insertBatch(items) {
-    const insert = db.prepare('INSERT OR IGNORE INTO turkus (repertukul_id, name) VALUES (?, ?)');
+    const insert = db.prepare('INSERT OR IGNORE INTO turkus (repertukul_id, name, slug) VALUES (?, ?, ?)');
     const run = db.transaction((turkus) => {
       let inserted = 0;
       for (const t of turkus) {
-        if (insert.run(t.id, t.name).changes > 0) inserted++;
+        if (insert.run(t.id, t.name, t.slug || null).changes > 0) inserted++;
       }
       return inserted;
     });
     return run(items);
+  },
+
+  updateBatchSlugs(items) {
+    const update = db.prepare('UPDATE turkus SET slug = ? WHERE repertukul_id = ?');
+    const run = db.transaction((turkus) => {
+      let updated = 0;
+      for (const t of turkus) {
+        if (t.slug && update.run(t.slug, t.id).changes > 0) updated++;
+      }
+      return updated;
+    });
+    return run(items);
+  },
+
+  findWithoutLyrics(limit = 100) {
+    return db.prepare(
+      "SELECT id, slug, name FROM turkus WHERE slug IS NOT NULL AND slug != '' AND (lyrics IS NULL OR lyrics = '') LIMIT ?"
+    ).all(limit);
+  },
+
+  updateLyricsAndMeta(id, detail) {
+    db.prepare(`
+      UPDATE turkus SET lyrics = ?, trt_no = COALESCE(NULLIF(?, ''), trt_no),
+        region = COALESCE(NULLIF(?, ''), region),
+        source_person = COALESCE(NULLIF(?, ''), source_person),
+        compiler = COALESCE(NULLIF(?, ''), compiler),
+        notator = COALESCE(NULLIF(?, ''), notator),
+        musical_type = COALESCE(NULLIF(?, ''), musical_type),
+        modal_scale = COALESCE(NULLIF(?, ''), modal_scale)
+      WHERE id = ?
+    `).run(
+      detail.lyrics, detail.trt_no || '', detail.region || '',
+      detail.source_person || '', detail.compiler || '',
+      detail.notator || '', detail.musical_type || '',
+      detail.modal_scale || '', id
+    );
+  },
+
+  markNoLyrics(id) {
+    db.prepare("UPDATE turkus SET lyrics = '[SOZ_YOK]' WHERE id = ?").run(id);
+  },
+
+  countWithLyrics() {
+    return db.prepare(
+      "SELECT COUNT(*) as total FROM turkus WHERE lyrics IS NOT NULL AND lyrics != '' AND lyrics != '[SOZ_YOK]'"
+    ).get().total;
+  },
+
+  countWithoutLyrics() {
+    return db.prepare(
+      "SELECT COUNT(*) as total FROM turkus WHERE slug IS NOT NULL AND slug != '' AND (lyrics IS NULL OR lyrics = '')"
+    ).get().total;
   },
 
   insertManual(data) {

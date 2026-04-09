@@ -92,6 +92,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_turkus_name ON turkus(name);
 `);
 
+// slug kolonu yoksa ekle
+try {
+  db.prepare("SELECT slug FROM turkus LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE turkus ADD COLUMN slug TEXT");
+}
+
 // Varsayılan admin kullanıcısı oluştur
 const adminExists = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@turku.edu.tr');
 if (!adminExists) {

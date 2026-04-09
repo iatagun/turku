@@ -8,7 +8,14 @@ const TurkuRow = React.memo(function TurkuRow({ item, index, onAnalyze }) {
       <td style={{ color: '#6B6B6B', fontSize: '0.85rem' }}>{index}</td>
       <td>
         <strong>{item.name}</strong>
-        {item.trt_no && <div style={{ fontSize: '0.8rem', color: '#6B6B6B' }}>TRT: {item.trt_no}</div>}
+        <div style={{ fontSize: '0.8rem', color: '#6B6B6B' }}>
+          {item.trt_no && <span>TRT: {item.trt_no} </span>}
+          {item.has_lyrics ? (
+            <span style={{ color: '#16a34a' }} title="Sözler mevcut">📜 Söz var</span>
+          ) : (
+            <span style={{ color: '#9ca3af' }} title="Sözler henüz çekilmedi">📜 Söz yok</span>
+          )}
+        </div>
       </td>
       <td style={{ fontSize: '0.85rem', color: '#6B6B6B' }}>
         {item.region || item.city || '-'}
