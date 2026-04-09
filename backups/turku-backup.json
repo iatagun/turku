@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "exported_at": "2026-04-09T21:16:03.534Z",
+  "users": [
+    {
+      "id": 1,
+      "name": "Admin",
+      "email": "admin@turku.edu.tr",
+      "password": "$2a$10$ofwepJ/gHviYTkpgyOhsBem56l5/xVSONQ6DFN9egMk6tbNFiGk1q",
+      "role": "admin",
+      "created_at": "2026-04-09 20:46:00"
+    },
+    {
+      "id": 2,
+      "name": "Emel Mutlutürk",
+      "email": "emutlututk35@gmail.com",
+      "password": "$2a$10$I2gAeYfKvK6Ib8omi7KabeEyjhcjfLGXOGbecyyGQ0DG8lhb6EsnO",
+      "role": "teacher",
+      "created_at": "2026-04-09 21:08:32"
+    }
+  ],
+  "analyses": []
+}
