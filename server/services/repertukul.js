@@ -4,6 +4,27 @@ const iconv = require('iconv-lite');
 
 const BASE_URL = 'https://www.repertukul.com';
 
+// repertukul.com HTML'inden türkü listesi parse et
+function parseTurkuList(html) {
+  const results = [];
+  // Pattern: class='turkulistesi(A)?' id='ID' onClick=window.open('SLUG','_blank')><font ...> NUM * NAME </font>
+  const regex = /class='turkulistesi[A]?'\s+id='(\d+)'\s+onClick=window\.open\('([^']+)','_blank'\)><font[^>]*>([\s\S]*?)<\/font>/g;
+  let match;
+  while ((match = regex.exec(html)) !== null) {
+    const id = match[1];
+    const slug = match[2];
+    // Name: " &nbsp; 1 *  A BENİM BAŞI ŞALLIM " -> clean it
+    let name = match[3]
+      .replace(/&nbsp;/g, ' ')
+      .replace(/^\s*\d+\s*\*\s*/, '')
+      .trim();
+    if (name.length > 1) {
+      results.push({ id, slug, name });
+    }
+  }
+  return results;
+}
+
 // repertukul.com üzerinden türkü arama
 async function searchTurku(query, category = '1') {
   try {
@@ -22,55 +43,7 @@ async function searchTurku(query, category = '1') {
     );
 
     const html = iconv.decode(Buffer.from(response.data), 'utf-8');
-    const $ = cheerio.load(html);
-    const results = [];
-
-    // Parse search results - repertukul returns HTML fragments
-    $('div.turkulistesi, tr, .sonucSatir, a').each((_, el) => {
-      const $el = $(el);
-      const text = $el.text().trim();
-      const onclick = $el.attr('onclick') || '';
-      const href = $el.attr('href') || '';
-
-      // Extract ID from onclick handlers like sorguSonuc('123') or links
-      let id = null;
-      const matchOnclick = onclick.match(/sorguSonuc\(['"]?(\w+)['"]?\)/);
-      const matchHref = href.match(/\/(\d+)$/);
-      if (matchOnclick) id = matchOnclick[1];
-      else if (matchHref) id = matchHref[1];
-
-      if (text && text.length > 2 && id) {
-        results.push({ id, name: text });
-      }
-    });
-
-    // If the standard parsing didn't work, try to extract from raw HTML
-    if (results.length === 0) {
-      const idMatches = html.matchAll(/sorguSonuc\(['"]?(\w+)['"]?\)/g);
-      const textMatches = html.matchAll(/<[^>]+onclick[^>]*sorguSonuc\(['"]?\w+['"]?\)[^>]*>([^<]+)/g);
-
-      const ids = [...idMatches].map(m => m[1]);
-      const texts = [...textMatches].map(m => m[1].trim());
-
-      for (let i = 0; i < Math.min(ids.length, texts.length); i++) {
-        if (texts[i] && texts[i].length > 2) {
-          results.push({ id: ids[i], name: texts[i] });
-        }
-      }
-    }
-
-    // Fallback: Extract any clickable text-like patterns
-    if (results.length === 0) {
-      const regex = /onclick\s*=\s*["']?sorguSonuc\(['"]?(\w+)['"]?\)["']?[^>]*>([^<]*)/gi;
-      let match;
-      while ((match = regex.exec(html)) !== null) {
-        const name = match[2].trim();
-        if (name.length > 2) {
-          results.push({ id: match[1], name });
-        }
-      }
-    }
-
+    const results = parseTurkuList(html);
     return { results, rawHtml: html };
   } catch (error) {
     console.error('Repertukul arama hatası:', error.message);
@@ -190,4 +163,26 @@ async function getCategory(categoryPath) {
   }
 }
 
-module.exports = { searchTurku, getTurkuDetail, getCategory };
+// Tüm türküleri toplu çek (arama "bir" geniş sonuç döner)
+async function fetchAllTurkus(onProgress) {
+  const allItems = new Map();
+
+  // "bir" araması ~4500 türkü döndürüyor
+  const searches = [
+    { query: 'bir', category: '1' },
+  ];
+
+  for (const s of searches) {
+    const { results } = await searchTurku(s.query, s.category);
+    for (const item of results) {
+      if (!allItems.has(item.id)) {
+        allItems.set(item.id, item);
+      }
+    }
+    if (onProgress) onProgress(allItems.size);
+  }
+
+  return [...allItems.values()];
+}
+
+module.exports = { searchTurku, getTurkuDetail, getCategory, fetchAllTurkus, parseTurkuList };

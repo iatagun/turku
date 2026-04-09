@@ -80,6 +80,17 @@ router.post('/', auth, (req, res) => {
 
     if (!turku_id) return res.status(400).json({ error: 'Türkü seçilmedi.' });
 
+    // Çift analiz engeli: Bu türkünün tamamlanmış analizi varsa engelle
+    const existingCompleted = db.prepare(
+      "SELECT a.id, u.name as analyst_name FROM analyses a JOIN users u ON a.user_id = u.id WHERE a.turku_id = ? AND a.status = 'completed'"
+    ).get(turku_id);
+    if (existingCompleted) {
+      return res.status(409).json({
+        error: `Bu türkünün analizi zaten ${existingCompleted.analyst_name} tarafından tamamlanmış.`,
+        existingAnalysisId: existingCompleted.id,
+      });
+    }
+
     const result = db.prepare(`
       INSERT INTO analyses (user_id, turku_id, turku_name, status, konu, kullanilabilirlik, somutluk,
         tema, toplumsal_islev, olumsuz_icerik, sinif_duzeyi, erdem_deger, ilgili_alan, cefr,

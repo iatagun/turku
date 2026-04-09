@@ -260,6 +260,7 @@ tr:hover td { background: #FFF8F5; }
 }
 .badge-draft { background: #FFF3CD; color: #856404; }
 .badge-completed { background: #D4EDDA; color: #155724; }
+.badge-pending { background: #E2E3E5; color: #383D41; }
 
 /* Section */
 .analysis-section {

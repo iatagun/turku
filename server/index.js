@@ -16,6 +16,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/turku', require('./routes/turku'));
 app.use('/api/analyses', require('./routes/analysis'));
 app.use('/api/export', require('./routes/export'));
+app.use('/api/stats', require('./routes/stats'));
 
 // Sağlık kontrolü
 app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date().toISOString() }));

@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import TurkuSearch from './pages/TurkuSearch';
+import TurkuQueue from './pages/TurkuQueue';
 import AnalysisForm from './pages/AnalysisForm';
 import MyAnalyses from './pages/MyAnalyses';
 
@@ -23,6 +24,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
           <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+          <Route path="/queue" element={<PrivateRoute><TurkuQueue /></PrivateRoute>} />
           <Route path="/search" element={<PrivateRoute><TurkuSearch /></PrivateRoute>} />
           <Route path="/analysis/new/:turkuId" element={<PrivateRoute><AnalysisForm /></PrivateRoute>} />
           <Route path="/analysis/:id" element={<PrivateRoute><AnalysisForm /></PrivateRoute>} />

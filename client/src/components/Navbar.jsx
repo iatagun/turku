@@ -16,6 +16,7 @@ export default function Navbar() {
         </Link>
         <div className="navbar-links">
           <Link to="/" className={isActive('/')}>Ana Sayfa</Link>
+          <Link to="/queue" className={isActive('/queue')}>Türkü Listesi</Link>
           <Link to="/search" className={isActive('/search')}>Türkü Ara</Link>
           <Link to="/my-analyses" className={isActive('/my-analyses')}>Analizlerim</Link>
           <span style={{ color: 'rgba(255,255,255,0.5)', padding: '0 4px' }}>|</span>
