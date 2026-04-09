@@ -4,7 +4,11 @@ services:
   - type: web
     name: turku-analiz-platformu
     runtime: node
-    plan: free
+    plan: starter
+    disk:
+      name: turku-data
+      mountPath: /data
+      sizeGB: 1
     buildCommand: npm install && npm run build
     startCommand: node server/index.js
     envVars:
@@ -14,3 +18,5 @@ services:
         generateValue: true
       - key: PORT
         value: 10000
+      - key: DB_PATH
+        value: /data/turku-analiz.db

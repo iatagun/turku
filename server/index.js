@@ -18,6 +18,7 @@ app.use('/api/turku', require('./routes/turku'));
 app.use('/api/analyses', require('./routes/analysis'));
 app.use('/api/export', require('./routes/export'));
 app.use('/api/stats', require('./routes/stats'));
+app.use('/api/backup', require('./routes/backup'));
 
 // Sağlık kontrolü
 app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
@@ -38,6 +39,10 @@ app.listen(PORT, () => {
   console.log(`🎵 Türkü Analiz Platformu sunucusu ${PORT} portunda çalışıyor`);
   console.log(`   http://localhost:${PORT}`);
 
+  // Yedekten geri yükleme (DB boşsa)
+  const backupService = require('./services/backupService');
+  backupService.restoreIfEmpty();
+
   // DB boşsa otomatik türkü listesini çek (Render deploy sonrası vb.)
   const turkuRepo = require('./repositories/turkuRepository');
   const totalTurkus = turkuRepo.count();
@@ -55,4 +60,21 @@ app.listen(PORT, () => {
       console.error('❌ Otomatik türkü çekme hatası:', err.message);
     });
   }
+
+  // Otomatik yedekleme (her 30 dakikada bir)
+  backupService.startAutoBackup();
 });
+
+// Kapanışta son yedekleme
+function gracefulShutdown(signal) {
+  console.log(`\n🛑 ${signal} sinyali alındı, son yedekleme yapılıyor...`);
+  try {
+    const backupService = require('./services/backupService');
+    backupService.saveBackup();
+  } catch (err) {
+    console.error('❌ Kapanış yedeği hatası:', err.message);
+  }
+  process.exit(0);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
