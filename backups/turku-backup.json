@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "exported_at": "2026-04-13T02:24:34.191Z",
+  "exported_at": "2026-04-13T02:41:32.137Z",
   "users": [
     {
       "id": 1,
       "name": "Admin",
       "email": "admin@turku.edu.tr",
-      "password": "$2a$10$bal3.aLTwj./.G3IuDNIGe9cAJT8nGjxAHTJSpn8sxtNRHv4A3hGy",
+      "password": "$2a$10$mHW.V3m8YxpdZi3ayE/rbe9t1xKBQV0Z/fLZtwRc7JFYyi81VnMiW",
       "role": "admin",
-      "created_at": "2026-04-13 02:08:29"
+      "created_at": "2026-04-13 02:25:27"
     },
     {
       "id": 2,
